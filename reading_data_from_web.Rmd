@@ -1,0 +1,151 @@
+---
+title: "Reading data from the web"
+author: "Marisa Sobel"
+date: "10/11/2018"
+output: github_document
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_bw() + theme(legend.position = "bottom"))
+```
+
+Load some packages.
+
+```{r}
+library(rvest)
+library(httr)
+```
+
+## Scrape 
+
+Get the HTML
+
+```{r}
+url = "http://samhda.s3-us-gov-west-1.amazonaws.com/s3fs-public/field-uploads/2k15StateFiles/NSDUHsaeShortTermCHG2015.htm"
+drug_use_xml = read_html(url)
+```
+
+Get tables from HTML
+
+```{r}
+# extracted ALL the tables...only want the first one
+drug_use_xml %>% 
+  html_nodes(css = "table")
+
+# trying to get the first object in the "list" --> name object and select first element in the list
+drug_use_xml %>% 
+  html_nodes(css = "table") %>% 
+  .[[1]]
+  
+# make table into something useful in R --> NOT THERE YET, looks terrible 
+# the "note" at the bottom of the table in the webpage appears at the top of the table in every column
+#drug_use_xml %>% 
+#  html_nodes(css = "table") %>% 
+#  .[[1]] %>% 
+#  html_table()
+
+# slice to access rows of a table by number (filter over slice for the most part)
+# convert to tibble
+drug_use_xml %>% 
+  html_nodes(css = "table") %>% 
+  .[[1]] %>% 
+  html_table() %>% 
+  slice(-1) %>% 
+  as.tibble()
+```
+
+Got it into R, but still can't use it...
+* not tidy
+* characters where numbers are (from superscript in original table)
+
+### Learning Assessment
+
+```{r}
+NYC_cost_living_data = read_html("https://www.bestplaces.net/cost_of_living/city/new_york/new_york") %>% 
+  html_nodes(css = "table") %>% 
+  .[[1]] %>% 
+  html_table(header = TRUE)
+```
+
+
+## Harry Potter
+
+Get the data
+
+```{r}
+hpsaga_html = read_html("https://www.imdb.com/list/ls000630791/")
+
+titles = hpsaga_html %>% 
+  html_nodes(css = ".lister-item-header a") %>% 
+  html_text()
+
+gross_rev = hpsaga_html %>% 
+  html_nodes(css = ".text-small:nth-child(7) span:nth-child(5)") %>% 
+  html_text
+
+hpsaga_df = tibble(
+  title = titles, 
+  rev = gross_rev
+)
+```
+
+### Learning assessment
+
+```{r}
+dynamite_html = read_html("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=1")
+
+review_titles = dynamite_html %>%
+  html_nodes("#cm_cr-review_list .review-title") %>%
+  html_text()
+
+review_stars = dynamite_html %>%
+  html_nodes("#cm_cr-review_list .review-rating") %>%
+  html_text()
+
+review_text = dynamite_html %>%
+    html_nodes(".review-data:nth-child(4)") %>%
+    html_text()
+
+reviews = tibble(
+  title = review_titles,
+  stars = review_stars,
+  text = review_text
+)
+```
+
+
+## Using an API
+
+Get water data
+
+```{r}
+# as CSV
+nyc_water = GET("https://data.cityofnewyork.us/resource/waf7-5gvc.csv") %>% 
+  content("parsed")
+
+# as JSON
+nyc_water = GET("https://data.cityofnewyork.us/resource/waf7-5gvc.json") %>% 
+  content("text") %>%
+  jsonlite::fromJSON() %>%
+  as_tibble()
+```
+
+Get BRFSS
+
+```{r}
+brfss_smart2010 = 
+  GET("https://data.cdc.gov/api/views/acme-vg9e/rows.csv?accessType=DOWNLOAD") %>% 
+  content("parsed")
+```
+
+
+
+

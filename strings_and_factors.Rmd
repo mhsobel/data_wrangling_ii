@@ -1,0 +1,294 @@
+---
+title: "Strings and Factors"
+author: "Marisa Sobel"
+date: "10/16/2018"
+output: github_document
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(p8105.datasets)
+library(viridis)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_bw() + theme(legend.position = "bottom"))
+```
+
+### Regex
+
+```{r, collapse=TRUE}
+string_vec = c("my", "name", "is", "mo")
+
+str_detect(string_vec, "mo")
+str_detect(string_vec, "Mo")
+
+str_replace(string_vec, "mo", "Mo")
+```
+
+begins with, ends with
+
+```{r, collapse=TRUE}
+string_vec = c(
+  "i think we all rule for participating",
+  "i think i have been caught",
+  "i think this will be quite fun actually",
+  "it will be fun, i think"
+  )
+
+# ^ at beginning = begin with 
+str_detect(string_vec, "^i think")
+
+# $ at end = ends with
+str_detect(string_vec, "i think$")
+```
+
+looking for matches
+
+```{r, collapse=TRUE}
+string_vec = c(
+  "Y'all remember Pres. HW Bush?",
+  "I saw a green bush",
+  "BBQ and Bushwalking at Molonglo Gorge",
+  "BUSH!!"
+  )
+
+# [ ] = multiple options for a match 
+str_detect(string_vec,"[Bb]ush")
+```
+
+find pattern: starts with, followed by
+
+```{r, collapse=TRUE}
+string_vec = c(
+  '7th inning stretch',
+  '1st half soon to begin. Texas won the toss.',
+  'she is 5 feet 4 inches tall',
+  '3AM - cant sleep :('
+  )
+
+# starts with, followed by
+str_detect(string_vec, "^[0-9][a-zA-Z]")
+```
+
+special symbol "." = anything
+
+```{r, collapse=TRUE}
+string_vec = c(
+  'Its 7:11 in the evening',
+  'want to go to 7-11?',
+  'my flight is AA711',
+  'NetBios: scanning ip 203.167.114.66'
+  )
+
+# 7 followed by ANYTHING followed by 11
+str_detect(string_vec, "7.11")
+
+string_vec = c(
+  'The CI is [2, 5]',
+  ':-]',
+  ':-[',
+  'I found the answer on pages [6-7]'
+  )
+
+# use \ to search for special characters 
+str_detect(string_vec, "\\[")
+```
+
+
+### PULSE data 
+
+Tidy PULSE data
+
+```{r, collapse=TRUE}
+pulse_data = haven::read_sas("./data/public_pulse_data.sas7bdat") %>%
+  janitor::clean_names() %>%
+  gather(key = visit, value = bdi, bdi_score_bl:bdi_score_12m) %>%
+  mutate(visit = str_replace(visit, "bdi_score_", ""),
+         visit = str_replace(visit, "bl", "00m"),
+         visit = fct_relevel(visit, str_c(c("00", "01", "06", "12"), "m"))) %>%
+  arrange(id, visit)
+```
+
+
+### NSDUH
+
+```{r, collapse=TRUE}
+url = "http://samhda.s3-us-gov-west-1.amazonaws.com/s3fs-public/field-uploads/2k15StateFiles/NSDUHsaeShortTermCHG2015.htm"
+drug_use_xml = read_html(url)
+
+table_marj = (drug_use_xml %>% html_nodes(css = "table")) %>% 
+  .[[1]] %>%
+  html_table() %>%
+  slice(-1) %>%
+  as_tibble()
+```
+
+clean up imported data
+
+```{r, collapse=TRUE}
+data_marj = 
+  table_marj %>%
+  select(-contains("P Value")) %>%
+  gather(key = key, value = percent, -State) %>%
+  separate(key, into = c("age", "year"), sep = "\\(") %>%
+  mutate(year = str_replace(year, "\\)", ""),
+         percent = str_replace(percent, "[a-c]$", ""),
+         percent = as.numeric(percent)) %>%
+  filter(!(State %in% c("Total U.S.", "Northeast", "Midwest", "South", "West")))
+```
+
+making plots with that tidy data
+
+```{r, collapse=TRUE}
+# order of factor variable!
+data_marj %>%
+  filter(age == "12-17") %>% 
+  mutate(State = fct_reorder(State, percent)) %>% 
+  ggplot(aes(x = State, y = percent, color = year)) + 
+    geom_point() + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+### Fators...
+
+```{r, collapse=TRUE}
+# automatically chooses alphabetical as order
+vec_sex = factor(c("male", "male", "female", "female"))
+as.numeric(vec_sex)
+
+# set refrence group --> shift underlying ordering of variabels 
+vec_sex = relevel(vec_sex, ref = "male")
+vec_sex
+as.numeric(vec_sex)
+```
+
+
+### Weather data
+
+```{r, collapse=TRUE}
+weather_df = 
+  rnoaa::meteo_pull_monitors(c("USW00094728", "USC00519397", "USS0023B17S"),
+                      var = c("PRCP", "TMIN", "TMAX"), 
+                      date_min = "2017-01-01",
+                      date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY", 
+                      USC00519397 = "Waikiki_HA",
+                      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+weather_df
+```
+
+
+```{r, collapse=TRUE}
+weather_df %>% 
+  mutate(name = factor(name))
+```
+
+```{r, collapse=TRUE}
+# set levels in relevel
+weather_df %>%
+  mutate(name = forcats::fct_relevel(name, c("Waikiki_HA", "CentralPark_NY", "Waterhole_WA"))) %>% 
+  ggplot(aes(x = name, y = tmax)) + 
+  geom_violin(aes(fill = name), color = "blue", alpha = .5) + 
+  theme(legend.position = "bottom")
+
+# set level according to median of 2nd variable
+weather_df %>%
+  mutate(name = forcats::fct_reorder(name, tmax)) %>% 
+  ggplot(aes(x = name, y = tmax)) + 
+  geom_violin(aes(fill = name), color = "blue", alpha = .5) + 
+  theme(legend.position = "bottom")
+```
+
+ordering for linear model
+
+```{r, collapse=TRUE}
+weather_df %>%
+  lm(tmax ~ name, data = .)
+
+weather_df %>%
+  mutate(name = forcats::fct_relevel(name, c("Waikiki_HA", "CentralPark_NY", "Waterhole_WA"))) %>% 
+  lm(tmax ~ name, data = .)
+```
+
+### NYC restaurant inspection
+
+```{r}
+data(rest_inspec)
+
+rest_inspec %>% 
+  group_by(boro, grade) %>% 
+  summarize(n = n()) %>% 
+  spread(key = grade, value = n)
+
+# filtering
+rest_inspec =
+  rest_inspec %>%
+  filter(grade %in% c("A", "B", "C"), boro != "Missing") %>% 
+  mutate(boro = str_to_title(boro))
+```
+
+focusing on pizza...
+
+```{r}
+# str_detect not working in our favor...being too precise, need to open it up 
+rest_inspec %>% 
+  filter(str_detect(dba, "Pizza")) %>% 
+  group_by(boro, grade) %>% 
+  summarize(n = n()) %>% 
+  spread(key = grade, value = n)
+
+# making it more open
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  group_by(boro, grade) %>% 
+  summarize(n = n()) %>% 
+  spread(key = grade, value = n)
+
+# visualize in bar plot
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>%
+  ggplot(aes(x = boro, fill = grade)) + 
+  geom_bar() + 
+  scale_fill_viridis(discrete = TRUE)
+
+# reorder - put staten island first, do nothing with rest
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  mutate(boro = fct_relevel(boro, "Staten Island")) %>% 
+  ggplot(aes(x = boro, fill = grade)) + 
+  geom_bar() + 
+  scale_fill_viridis(discrete = TRUE)
+
+# reorder - by infrequent 
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  mutate(boro = fct_infreq(boro)) %>% 
+  ggplot(aes(x = boro, fill = grade)) + 
+  geom_bar() + 
+  scale_fill_viridis(discrete = TRUE)
+```
+
+change factor values
+
+```{r}
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  mutate(boro = fct_infreq(boro), 
+         boro = fct_recode(boro, "HipsterHQ" = "Brooklyn")) %>% 
+  ggplot(aes(x = boro, fill = grade)) + 
+  geom_bar() + 
+  scale_fill_viridis(discrete = TRUE)
+```
+
+
